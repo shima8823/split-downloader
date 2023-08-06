@@ -11,12 +11,12 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sync"
 )
 
 const (
-	outputFile = "bigfile.png"
-	chunkSize  = 1024 * 1024 // 1MB
+	chunkSize = 1024 * 1024 // 1MB
 )
 
 func main() {
@@ -26,7 +26,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "usage: download <fileurl>")
 		os.Exit(1)
 	}
-	err := DownloadFile(args[0], outputFile)
+	err := DownloadFile(args[0], filepath.Base(args[0]))
 	if err != nil {
 		fmt.Printf("Error downloading file: %s\n", err)
 	}
