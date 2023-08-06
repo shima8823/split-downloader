@@ -5,12 +5,14 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"golang.org/x/sync/errgroup"
 	"io"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"sync"
 )
@@ -33,6 +35,11 @@ func main() {
 }
 
 func DownloadFile(url, filename string) error {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go handleSignals(cancel)
+
 	contentLength, err := getFileSize(url)
 	if err != nil {
 		return err
@@ -58,7 +65,7 @@ func DownloadFile(url, filename string) error {
 		}
 
 		eg.Go(func() error {
-			return downloadChunk(url, start, end, file, &m)
+			return downloadChunk(ctx, url, start, end, file, &m)
 		})
 	}
 
@@ -67,6 +74,15 @@ func DownloadFile(url, filename string) error {
 	}
 
 	return nil
+}
+
+func handleSignals(cancelFunc context.CancelFunc) {
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt) // os.Interrupt = Ctrl+C
+
+	<-sigCh
+	fmt.Println("Interrupt signal received. Cleaning up...")
+	cancelFunc()
 }
 
 func getFileSize(url string) (int64, error) {
@@ -89,8 +105,8 @@ func calculateDownloadRange(contentLength int64) int64 {
 	return numChunks
 }
 
-func downloadChunk(url string, start, end int64, file *os.File, m *sync.Mutex) error {
-	req, err := http.NewRequest("GET", url, nil)
+func downloadChunk(ctx context.Context, url string, start, end int64, file *os.File, m *sync.Mutex) error {
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return err
 	}
