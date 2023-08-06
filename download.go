@@ -1,6 +1,11 @@
+// example:
+// https://sample-img.lb-product.com/wp-content/themes/hitchcock/images/1GB.png
+// https://sample-img.lb-product.com/wp-content/themes/hitchcock/images/1KB.png
+
 package main
 
 import (
+	"flag"
 	"fmt"
 	"golang.org/x/sync/errgroup"
 	"io"
@@ -10,13 +15,18 @@ import (
 )
 
 const (
-	fileURL    = "https://sample-img.lb-product.com/wp-content/themes/hitchcock/images/1GB.png"
 	outputFile = "bigfile.png"
 	chunkSize  = 1024 * 1024 // 1MB
 )
 
 func main() {
-	err := DownloadFile(fileURL, outputFile)
+	flag.Parse()
+	args := flag.Args()
+	if len(args) != 1 {
+		fmt.Fprintln(os.Stderr, "usage: download <fileurl>")
+		os.Exit(1)
+	}
+	err := DownloadFile(args[0], outputFile)
 	if err != nil {
 		fmt.Printf("Error downloading file: %s\n", err)
 	}
