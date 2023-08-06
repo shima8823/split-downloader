@@ -33,19 +33,9 @@ func main() {
 }
 
 func DownloadFile(url, filename string) error {
-	resp, err := http.Head(url)
+	contentLength, err := getFileSize(url)
 	if err != nil {
 		return err
-	}
-	defer resp.Body.Close()
-
-	var contentLength = resp.ContentLength
-	if contentLength == -1 {
-		return fmt.Errorf("server doesn't return file size")
-	}
-	numChunks := contentLength / chunkSize
-	if contentLength%chunkSize != 0 {
-		numChunks++
 	}
 
 	file, err := os.Create(filename)
@@ -53,6 +43,8 @@ func DownloadFile(url, filename string) error {
 		return err
 	}
 	defer file.Close()
+
+	numChunks := calculateDownloadRange(contentLength)
 
 	var eg errgroup.Group
 	var m sync.Mutex
@@ -66,29 +58,7 @@ func DownloadFile(url, filename string) error {
 		}
 
 		eg.Go(func() error {
-			req, err := http.NewRequest("GET", url, nil)
-			if err != nil {
-				return err
-			}
-			req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", start, end))
-
-			resp, err := http.DefaultClient.Do(req)
-			if err != nil {
-				return err
-			}
-			defer resp.Body.Close()
-
-			// Read the body into a byte slice.
-			body, err := io.ReadAll(resp.Body)
-			if err != nil {
-				return err
-			}
-
-			m.Lock()
-			defer m.Unlock()
-
-			_, err = file.WriteAt(body, start)
-			return err
+			return downloadChunk(url, start, end, file, &m)
 		})
 	}
 
@@ -97,4 +67,49 @@ func DownloadFile(url, filename string) error {
 	}
 
 	return nil
+}
+
+func getFileSize(url string) (int64, error) {
+	resp, err := http.Head(url)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	if resp.ContentLength == -1 {
+		return 0, fmt.Errorf("server doesn't return file size")
+	}
+	return resp.ContentLength, nil
+}
+
+func calculateDownloadRange(contentLength int64) int64 {
+	numChunks := contentLength / chunkSize
+	if contentLength%chunkSize != 0 {
+		numChunks++
+	}
+	return numChunks
+}
+
+func downloadChunk(url string, start, end int64, file *os.File, m *sync.Mutex) error {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", start, end))
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	m.Lock()
+	defer m.Unlock()
+
+	_, err = file.WriteAt(body, start)
+	return err
 }
